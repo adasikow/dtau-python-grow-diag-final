@@ -1,14 +1,26 @@
+#!/usr/bin/env python
+
 from itertools import izip
 import re
-from sys import argv
+from sys import argv, exit
+
+
+# 0 - include alignments to 'NULL' token in GROW-DIAG-FINAL
+# 1 - exclude alignments to 'NULL' token in GROW-DIAG-FINAL
+START_INDEX = 1
 
 
 def init_matrix(rows, columns, value):
+    """
+    A function that returns matrix in a given
+    dimensions filled with a given value
+    """
+
     result = [[value for _ in range(columns)] for _ in range(rows)]
     return result
 
 
-def intersect(e2f, f2e):
+def intersection(e2f, f2e):
     rows = len(e2f)
     columns = len(f2e)
     result = init_matrix(rows, columns, False)
@@ -31,6 +43,10 @@ def union(e2f, f2e):
 
 
 def neighboring_points((e_index, f_index), e_len, f_len):
+    """
+    A function that returns list of neighboring points in
+    an alignment matrix for a given alignment (pair of indexes)
+    """
     result = []
 
     if e_index > 0:
@@ -54,7 +70,11 @@ def neighboring_points((e_index, f_index), e_len, f_len):
 
 
 def aligned_e(e, f_len, alignment):
-    for f in range(f_len):
+    """
+    A function that checks if a given 'english' word is aligned
+    to any foreign word in a given foreign sentence
+    """
+    for f in range(START_INDEX, f_len):
         if alignment[e][f]:
             return True
 
@@ -62,7 +82,11 @@ def aligned_e(e, f_len, alignment):
 
 
 def aligned_f(f, e_len, alignment):
-    for e in range(e_len):
+    """
+    A function that checks if a given foreign word is aligned
+    to any 'english' word in a given 'english' sentence
+    """
+    for e in range(START_INDEX, e_len):
         if alignment[e][f]:
             return True
 
@@ -73,8 +97,8 @@ def grow_diag(union, alignment, e_len, f_len):
     new_points_added = True
     while new_points_added:
         new_points_added = False
-        for e in range(e_len):
-            for f in range(f_len):
+        for e in range(START_INDEX, e_len):
+            for f in range(START_INDEX, f_len):
                 if alignment[e][f]:
                     for (e_new, f_new) in neighboring_points((e, f), e_len, f_len):
                         if not (aligned_e(e_new, f_len, alignment) and aligned_f(f_new, e_len, alignment))\
@@ -84,15 +108,41 @@ def grow_diag(union, alignment, e_len, f_len):
 
 
 def final(alignment, e2f, f2e, e_len, f_len):
-    for e in range(e_len):
-        for f in range(f_len):
+    """
+    A function that implements both FINAL(e2f) and FINAL(f2e)
+    steps of GROW-DIAG-FINAL algorithm
+    """
+    for e in range(START_INDEX, e_len):
+        for f in range(START_INDEX, f_len):
             if not (aligned_e(e, f_len, alignment) and aligned_f(f, e_len, alignment))\
                     and (e2f[e][f] or f2e[f][e]):
                 alignment[e][f] = True
 
 
+def final_e2f(alignment, e2f, e_len, f_len):
+    """
+    A function that implements FINAL(e2f) step of GROW-DIAG-FINAL algorithm
+    """
+    for e in range(START_INDEX, e_len):
+        for f in range(START_INDEX, f_len):
+            if not (aligned_e(e, f_len, alignment) and aligned_f(f, e_len, alignment))\
+                    and e2f[e][f]:
+                alignment[e][f] = True
+
+
+def final_f2e(alignment, f2e, e_len, f_len):
+    """
+    A function that implements FINAL(f2e) step of GROW-DIAG-FINAL algorithm
+    """
+    for e in range(START_INDEX, e_len):
+        for f in range(START_INDEX, f_len):
+            if not (aligned_e(e, f_len, alignment) and aligned_f(f, e_len, alignment))\
+                    and f2e[f][e]:
+                alignment[e][f] = True
+
+
 def grow_diag_final(e2f, f2e, e_len, f_len):
-    alignment = intersect(e2f, f2e)
+    alignment = intersection(e2f, f2e)
     grow_diag(union(e2f, f2e), alignment, e_len, f_len)
     final(alignment, e2f, f2e, e_len, f_len)
     return alignment
@@ -102,7 +152,7 @@ def parse_alignments(alignments_line, values):
     word_alignments_regex = ur"(\S+)\s\(\{([\s\d]*)\}\)"
     alignments = re.findall(word_alignments_regex, alignments_line)
 
-    # Initialize array with False values for each pair of words
+    # Initialize matrix with False value for each pair of words
     rows = len(alignments)
     columns = len(values)
     result = init_matrix(rows, columns, False)
@@ -123,15 +173,18 @@ def print_alignments(alignments, e_len, f_len):
             if alignments[e][f]:
                 result += str(f) + '-' + str(e) + ' '
 
-    print result
+    print result.strip()
 
 
 def main():
+    if len(argv) < 3:
+        exit('Usage: %s e2f_alignments_file f2e_alignments_file' % argv[0])
+
     script, e2f_filename, f2e_filename = argv
 
     # States:
     # 0 - skip line with information about sentences length and alignment score
-    # 1 - read sentence
+    # 1 - read sentences
     # 2 - read alignments and run GROW-DIAG-FINAL
     state = 0
 
